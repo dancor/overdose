@@ -1,4 +1,4 @@
-module Games.DrMario.Board where 
+module Overdose.Board where 
 
 import qualified Data.Map as M
 
