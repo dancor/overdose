@@ -1,8 +1,10 @@
 module Overdose.Board where 
 
 import qualified Data.Map as M
-
-
+import Text.PrettyPrint
+import Control.Monad.Trans
+import System.Random
+import Data.Maybe
 -- Static Board 
 
 data Dir = D | R | L  
@@ -12,10 +14,46 @@ type POS = (Int, Int)
 data Connection = CL | CR | CT | CB
 
 data Color  = Yellow | Red | Blue
+              deriving Eq
+
+instance Show Color where 
+    show Yellow = "Y"
+    show Red = "R"
+    show Blue = "B"
+
+
+showBoard board = vcat $ do 
+  v <- [1..vertMax]
+  return $ hcat [case M.lookup (h, v) board of 
+                 Nothing -> text " "
+                 Just p -> text $ show $ color p
+                             | h <- [1..horizMax]]
+       
+
+initBoard = do
+  board <- sequence [ do 
+                      square <- assignSquare
+                      case square of 
+                           Nothing -> return Nothing
+                           Just color -> 
+                               return $ Just ((h,v), Piece {isVirus=True, connected = Nothing, color = color}) |
+                      v <- [1..(vertMax - 4)],
+                      h <- [1..horizMax]
+             ]
+  return $ M.fromList $ catMaybes board
+      where assignSquare = do 
+                flip <- randomIO
+                if (flip::Double) < 0.7 then 
+                    return Nothing 
+                 else if flip > 0.9 then  return $ Just Red 
+                 else if flip > 0.8 then return $ Just Yellow
+                 else if flip > 0.7 then return $ Just Blue 
+                 else return Nothing
 
 data Piece = Piece {
-      connected :: Connection,
-      color :: Color
+      connected :: Maybe Connection,
+      color :: Color,
+      isVirus :: Bool
 }
 
 type Board = M.Map POS Piece
@@ -23,7 +61,9 @@ type Board = M.Map POS Piece
 vertMax = 16
 horizMax = 8
 
-allPos = [ (x,y) | y <- [1 .. vertMax], x <- [1 .. horizMax]]
+allPos = [(x,y) | y <- [1 .. vertMax], x <- [1 .. horizMax]]
+
+
 
 
 delPos D (x, y) =  (x,   y-1) 
@@ -50,27 +90,44 @@ addPiece board curPiece =
     M.insert (otherPos curPiece) otherPiece $ M.insert (bottomLeft curPiece) blPiece board 
         where           
           blPiece = Piece {
+                      isVirus = False,
                           connected = case orient curPiece of
-                                        Flat -> CR
-                                        Up -> CT,
+                                        Flat -> Just CR
+                                        Up -> Just CT,
                           color = case order curPiece of 
                                     Reg -> fst $ colors curPiece
                                     Flip -> snd $ colors curPiece
                     } 
           otherPiece = Piece {
+                         isVirus = False,
                           connected = case orient curPiece of
-                                        Flat -> CL
-                                        Up -> CB,
+                                        Flat -> Just CL
+                                        Up -> Just CB,
                           color = case order curPiece of 
                                     Reg -> snd $ colors curPiece
                                     Flip -> fst $ colors curPiece
                     } 
 
--- findMatches = allPos 
+findMatches board = do 
+    pos <- allPos 
+    dir <- [D,R]
+    color <- [Red, Yellow, Blue]
+    (checkMatches dir color pos board) 
 
 
+matchColor pos colorcheck board = 
+    case M.lookup pos board of 
+      Nothing -> False 
+      (Just spot ) -> (color spot) == colorcheck
 
--- checkMatch = 
+checkMatches dir color pos board = cm color pos 0 []
+    where 
+      cm color pos len accum =
+          if matchColor pos color board then 
+              cm color (delPos dir pos) (len + 1) (pos:accum) 
+          else 
+              (if len >=4 then accum else []) 
+
 
 
 -- user dropping mode 
@@ -119,4 +176,6 @@ canMovePiece dir board curPiece =
 
 -- uncontrolled falling mode 
 
+
+-- Tests
 
