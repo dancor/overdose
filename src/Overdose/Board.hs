@@ -136,6 +136,9 @@ findMatches board = do
     (checkMatches dir color pos board) 
 
 
+erase board pos = 
+    M.delete pos board 
+
 matchColor pos colorcheck board = 
     case M.lookup pos board of 
       Nothing -> False 
@@ -187,12 +190,10 @@ getPiecePos curPiece =
 --     where (x,y) = bottomLeft curPiece
 
 move dir game = 
-    game {curPiece = fst $ movePiece dir (staticBoard game) $ curPiece game
-         } 
+    game {curPiece = fst $ movePiece dir (staticBoard game) $ curPiece game} 
 
 rotate game = 
-    game {curPiece = rotatePiece $ curPiece game
-         } 
+    game {curPiece = rotatePiece $ curPiece game} 
 
 movePiece dir board curPiece =
     if canMovePiece dir board curPiece then 
@@ -232,8 +233,9 @@ data Game = Game {
 advanceGame (Game board curPiece ) = 
   if stuck then
       do 
+        let newBoard = foldl erase board (findMatches board) 
         startPiece <- randPiece 
-        return $ Game (addPiece board curPiece) startPiece  
+        return $ Game (addPiece newBoard curPiece) startPiece  
   else 
       return $ Game board newPiece
   where (newPiece, stuck) = movePiece D board curPiece  
