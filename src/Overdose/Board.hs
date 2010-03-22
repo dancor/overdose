@@ -176,12 +176,14 @@ data CurPiece = CurPiece {
       order :: ColorOrder
 } deriving Show
 
-rotatePiece curPiece = 
-    case (orient curPiece, order curPiece) of 
-      (Flat, Reg) -> curPiece{orient = Up} 
-      (Up, Reg) -> curPiece{orient= Flat, order = Flip} 
-      (Flat, Flip) -> curPiece{orient = Up} 
-      (Up, Flip) -> curPiece{orient = Flat, order = Reg} 
+rotatePiece curPiece board =
+    if isPieceBlocked newPiece board then curPiece
+    else newPiece 
+    where newPiece = case (orient curPiece, order curPiece) of 
+                       (Flat, Reg) -> curPiece{orient = Up} 
+                       (Up, Reg) -> curPiece{orient= Flat, order = Flip} 
+                       (Flat, Flip) -> curPiece{orient = Up} 
+                       (Up, Flip) -> curPiece{orient = Flat, order = Reg} 
 
 otherPos curPiece = 
     case orient curPiece of 
@@ -203,10 +205,11 @@ move dir game =
       User curPiece -> 
           game {gameState = User $ fst $ movePiece dir (staticBoard game) $ curPiece} 
       _ -> game
+
 rotate game = 
     case gameState game of 
       User curPiece -> 
-          game {gameState = User $ rotatePiece curPiece} 
+          game {gameState = User $ rotatePiece curPiece (staticBoard game)} 
       _ -> game
 
 movePiece dir board curPiece =
@@ -220,6 +223,10 @@ canMovePiece dir board curPiece =
      where movedPos = map (delPos dir) poses
            poses = getPiecePos curPiece
 
+isPieceBlocked curPiece board =
+    any (isBlocked board) poses 
+    where            
+      poses = getPiecePos curPiece
 
 randColor = do 
   r <- randomIO
@@ -286,7 +293,7 @@ shouldDropPiece board pos  =
                True
     where mpiece = getPos pos board
 
-
+advanceGame :: Game -> IO Game
 advanceGame game = 
   case gameState game of 
     User curPiece -> 
