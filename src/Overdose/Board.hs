@@ -5,6 +5,8 @@ import Text.PrettyPrint
 import Control.Monad.Trans
 import System.Random
 import Data.Maybe
+import Debug.Trace
+import Text.Printf
 -- Static Board 
 
 data Dir = D | R | L  
@@ -23,13 +25,13 @@ instance Show Color where
 
 
 showBoard board = vcat $ do 
-  v <- [1..vertMax]
-  return $ hcat [case M.lookup (h, v) board of 
+  v <- [vertMax, vertMax -1 .. 1]
+  return $ (text $ printf "%2d" (v::Int) ) <+> hcat [case M.lookup (h, v) board of 
                  Nothing -> text " "
                  Just p -> text $ show $ color p
-                             | h <- [1..horizMax]]
+                             | h <- [horizMax, horizMax -1 .. 1]]
        
-
+initBoard :: IO Board
 initBoard = do
   board <- sequence [ do 
                       square <- assignSquare
@@ -67,8 +69,8 @@ allPos = [(x,y) | y <- [1 .. vertMax], x <- [1 .. horizMax]]
 
 
 delPos D (x, y) =  (x,   y-1) 
-delPos L (x, y) =  (x-1, y) 
-delPos R (x, y) =  (x+1, y) 
+delPos L (x, y) =  (x+1, y) 
+delPos R (x, y) =  (x-1, y) 
 
 
 xpos (x,_)= x
@@ -78,15 +80,16 @@ hasPiece :: Board -> POS -> Bool
 hasPiece board pos = 
     case M.lookup pos board of 
       Nothing -> False 
-      (Just _) -> True
+      (Just _) -> (trace ("it's blocked " ++ (show pos))) True
 
-isBlocked dir board pos = 
-    (hasPiece board $ delPos dir pos)  ||
-    (ypos pos == 0) ||  
-    (xpos pos == 0) || 
-    (xpos pos == (vertMax + 1))
+isBlocked board pos = (trace $ show pos) $ 
+    (hasPiece board pos)  ||
+    ((ypos pos) < 1) ||  
+    ((xpos pos) < 1) || 
+    ((xpos pos) > (horizMax ))
 
-addPiece board curPiece = 
+addPiece :: Board -> CurPiece -> Board 
+addPiece board curPiece = trace (show $ bottomLeft curPiece) $  
     M.insert (otherPos curPiece) otherPiece $ M.insert (bottomLeft curPiece) blPiece board 
         where           
           blPiece = Piece {
@@ -133,15 +136,15 @@ checkMatches dir color pos board = cm color pos 0 []
 -- user dropping mode 
 
 data Orientation = Flat | Up
-
+                 deriving (Show)
 data ColorOrder  = Reg | Flip
-
+                   deriving (Show)
 data CurPiece = CurPiece {
       bottomLeft :: POS,
       colors :: (Color, Color),
       orient :: Orientation,
       order :: ColorOrder
-}
+} deriving Show
 
 rotatePiece curPiece = 
     case (orient curPiece, order curPiece) of 
@@ -155,6 +158,7 @@ otherPos curPiece =
        Flat -> (x+1, y)
        Up -> (x, y+1)
     where  (x,y) = bottomLeft curPiece 
+
 getPiecePos curPiece = 
     [bottomLeft curPiece, otherPos curPiece] 
 
@@ -166,16 +170,22 @@ getPiecePos curPiece =
 
 movePiece dir board curPiece =
     if canMovePiece dir board curPiece then 
-        curPiece { bottomLeft = delPos dir $ bottomLeft curPiece } 
-    else curPiece
+        let newPos = delPos dir $ bottomLeft curPiece in 
+        trace (show newPos) $  curPiece { bottomLeft = newPos  } 
+    else trace "not moved" $ curPiece
 
-canMovePiece dir board curPiece = 
-    any (isBlocked dir board) movedPos
+canMovePiece dir board curPiece = trace (show movedPos) $  
+    not $ any (isBlocked board) movedPos
      where movedPos = map (delPos dir ) poses
            poses = getPiecePos curPiece
+
 
 -- uncontrolled falling mode 
 
 
 -- Tests
-
+testPiece = CurPiece {bottomLeft = (4,16),
+                   orient = Flat,
+                   order = Reg,
+                   colors = (Red, Blue)
+                  }
