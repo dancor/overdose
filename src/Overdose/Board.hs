@@ -23,6 +23,14 @@ instance Show Color where
     show Red = "R"
     show Blue = "B"
 
+getAllPos game = do
+  pos <- allPos
+  return (pos, getPos pos board)
+  where board = addPiece (staticBoard game) (curPiece game) 
+    
+getPos :: POS -> Board -> Maybe Piece
+getPos pos board = 
+     M.lookup pos board 
 
 showBoard board = vcat $ do 
   v <- [vertMax, vertMax -1 .. 1]
@@ -31,6 +39,16 @@ showBoard board = vcat $ do
                  Just p -> text $ show $ color p
                              | h <- [horizMax, horizMax -1 .. 1]]
        
+initGame :: IO Game
+initGame = do 
+  newPiece <- randPiece
+  game <- initBoard
+  return $ Game {
+             curPiece = newPiece,
+             staticBoard = game 
+             
+           }
+
 initBoard :: IO Board
 initBoard = do
   board <- sequence [ do 
@@ -69,8 +87,8 @@ allPos = [(x,y) | y <- [1 .. vertMax], x <- [1 .. horizMax]]
 
 
 delPos D (x, y) =  (x,   y-1) 
-delPos L (x, y) =  (x+1, y) 
-delPos R (x, y) =  (x-1, y) 
+delPos L (x, y) =  (x-1, y) 
+delPos R (x, y) =  (x+1, y) 
 
 
 xpos (x,_)= x
@@ -80,16 +98,16 @@ hasPiece :: Board -> POS -> Bool
 hasPiece board pos = 
     case M.lookup pos board of 
       Nothing -> False 
-      (Just _) -> (trace ("it's blocked " ++ (show pos))) True
+      (Just _) ->  True
 
-isBlocked board pos = (trace $ show pos) $ 
+isBlocked board pos =  
     (hasPiece board pos)  ||
     ((ypos pos) < 1) ||  
     ((xpos pos) < 1) || 
     ((xpos pos) > (horizMax ))
 
 addPiece :: Board -> CurPiece -> Board 
-addPiece board curPiece = trace (show $ bottomLeft curPiece) $  
+addPiece board curPiece = 
     M.insert (otherPos curPiece) otherPiece $ M.insert (bottomLeft curPiece) blPiece board 
         where           
           blPiece = Piece {
@@ -168,24 +186,76 @@ getPiecePos curPiece =
 --                   Up -> [])
 --     where (x,y) = bottomLeft curPiece
 
+move dir game = 
+    game {curPiece = fst $ movePiece dir (staticBoard game) $ curPiece game
+         } 
+
+rotate game = 
+    game {curPiece = rotatePiece $ curPiece game
+         } 
+
 movePiece dir board curPiece =
     if canMovePiece dir board curPiece then 
         let newPos = delPos dir $ bottomLeft curPiece in 
-        trace (show newPos) $  curPiece { bottomLeft = newPos  } 
-    else trace "not moved" $ curPiece
+          (curPiece { bottomLeft = newPos  }, False) 
+    else  (curPiece, True)
 
-canMovePiece dir board curPiece = trace (show movedPos) $  
+canMovePiece dir board curPiece = 
     not $ any (isBlocked board) movedPos
-     where movedPos = map (delPos dir ) poses
+     where movedPos = map (delPos dir) poses
            poses = getPiecePos curPiece
 
+
+randColor = do 
+  r <- randomIO
+  return $ if (r::Double) < 0.33 then
+               Yellow 
+           else if r < 0.66 then
+               Red
+           else 
+               Blue
+
+randPiece = do 
+  a <- randColor 
+  b <- randColor 
+  return $ initPiece {colors = (a,b)} 
+      
+
+showGame game = 
+    showBoard $ addPiece (staticBoard game) (curPiece game) 
+
+data Game = Game {
+      staticBoard :: Board,
+      curPiece :: CurPiece 
+    }
+
+advanceGame (Game board curPiece ) = 
+  if stuck then
+      do 
+        startPiece <- randPiece 
+        return $ Game (addPiece board curPiece) startPiece  
+  else 
+      return $ Game board newPiece
+  where (newPiece, stuck) = movePiece D board curPiece  
+  
 
 -- uncontrolled falling mode 
 
 
+
+
 -- Tests
+initPiece = CurPiece {bottomLeft = (4,16),
+                   orient = Flat,
+                   order = Reg,
+                   colors = (Red, Blue)
+                  }
+
+
 testPiece = CurPiece {bottomLeft = (4,16),
                    orient = Flat,
                    order = Reg,
                    colors = (Red, Blue)
                   }
+
+
