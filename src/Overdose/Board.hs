@@ -9,11 +9,11 @@ import Debug.Trace
 import Text.Printf
 -- Static Board 
 
-data Dir = D | R | L  
-
+data Dir = D | R | L | U
+           deriving Eq
 type POS = (Int, Int)
 
-data Connection = CL | CR | CT | CB
+type Connection = Maybe Dir
 
 data Color  = Yellow | Red | Blue
               deriving Eq
@@ -26,7 +26,7 @@ instance Show Color where
 getAllPos game = do
   pos <- allPos
   return (pos, getPos pos board)
-  where board = addPiece (staticBoard game) (curPiece game) 
+  where board = viewBoard game
     
 getPos :: POS -> Board -> Maybe Piece
 getPos pos board = 
@@ -44,7 +44,7 @@ initGame = do
   newPiece <- randPiece
   game <- initBoard
   return $ Game {
-             curPiece = newPiece,
+             gameState = User newPiece,
              staticBoard = game 
              
            }
@@ -71,10 +71,12 @@ initBoard = do
                  else return Nothing
 
 data Piece = Piece {
-      connected :: Maybe Connection,
+      connected :: Connection,
       color :: Color,
       isVirus :: Bool
 }
+
+
 
 type Board = M.Map POS Piece
 
@@ -87,6 +89,7 @@ allPos = [(x,y) | y <- [1 .. vertMax], x <- [1 .. horizMax]]
 
 
 delPos D (x, y) =  (x,   y-1) 
+delPos U (x, y) =  (x,   y+1) 
 delPos L (x, y) =  (x-1, y) 
 delPos R (x, y) =  (x+1, y) 
 
@@ -113,8 +116,8 @@ addPiece board curPiece =
           blPiece = Piece {
                       isVirus = False,
                           connected = case orient curPiece of
-                                        Flat -> Just CR
-                                        Up -> Just CT,
+                                        Flat -> Just R
+                                        Up -> Just U,
                           color = case order curPiece of 
                                     Reg -> fst $ colors curPiece
                                     Flip -> snd $ colors curPiece
@@ -122,8 +125,8 @@ addPiece board curPiece =
           otherPiece = Piece {
                          isVirus = False,
                           connected = case orient curPiece of
-                                        Flat -> Just CL
-                                        Up -> Just CB,
+                                        Flat -> Just L
+                                        Up -> Just D,
                           color = case order curPiece of 
                                     Reg -> snd $ colors curPiece
                                     Flip -> fst $ colors curPiece
@@ -135,9 +138,15 @@ findMatches board = do
     color <- [Red, Yellow, Blue]
     (checkMatches dir color pos board) 
 
-
+erase :: Board -> POS -> Board
 erase board pos = 
-    M.delete pos board 
+    case getPos pos board of
+      Nothing -> board
+      Just piece ->
+          case connected piece of 
+            Nothing -> M.delete pos board 
+            Just dir -> 
+                M.adjust (\oldPiece -> oldPiece{connected = Nothing}) (delPos dir pos)  $ M.delete pos board 
 
 matchColor pos colorcheck board = 
     case M.lookup pos board of 
@@ -190,10 +199,15 @@ getPiecePos curPiece =
 --     where (x,y) = bottomLeft curPiece
 
 move dir game = 
-    game {curPiece = fst $ movePiece dir (staticBoard game) $ curPiece game} 
-
+    case gameState game of 
+      User curPiece -> 
+          game {gameState = User $ fst $ movePiece dir (staticBoard game) $ curPiece} 
+      _ -> game
 rotate game = 
-    game {curPiece = rotatePiece $ curPiece game} 
+    case gameState game of 
+      User curPiece -> 
+          game {gameState = User $ rotatePiece curPiece} 
+      _ -> game
 
 movePiece dir board curPiece =
     if canMovePiece dir board curPiece then 
@@ -220,27 +234,101 @@ randPiece = do
   a <- randColor 
   b <- randColor 
   return $ initPiece {colors = (a,b)} 
-      
+     
 
 showGame game = 
-    showBoard $ addPiece (staticBoard game) (curPiece game) 
+    showBoard . viewBoard 
+
+data GameState = User CurPiece | Falling
+
+viewBoard game = 
+    case gameState game of 
+      User piece -> addPiece (staticBoard game) piece
+      _ -> staticBoard game
 
 data Game = Game {
       staticBoard :: Board,
-      curPiece :: CurPiece 
+      gameState :: GameState
     }
 
-advanceGame (Game board curPiece ) = 
-  if stuck then
-      do 
-        let newBoard = foldl erase board (findMatches board) 
-        startPiece <- randPiece 
-        return $ Game (addPiece newBoard curPiece) startPiece  
-  else 
-      return $ Game board newPiece
-  where (newPiece, stuck) = movePiece D board curPiece  
-  
+curPiece game = 
+    case gameState game of 
+      User piece -> piece 
+      _ -> error "no current piece"
 
+normalizeBoardStep board = 
+    foldl normalizeRow (board,True) [1..vertMax]
+  where 
+    normalizeRow (board,b)  row  =
+         foldl movePiece (board,b) drop 
+        where drop = filter (shouldDropPiece board) [(col, row)  | col <- [1..horizMax] ] 
+              movePiece (board, _) pos = 
+                  (M.insert (delPos D pos) (fromJust piece) $ M.delete pos board, False) 
+                  where piece = getPos pos board 
+
+shouldDropPiece board pos  =
+    case mpiece of 
+      Nothing -> False
+      Just piece -> let con = connected piece in
+           if isVirus piece then
+               False
+           else if isBlocked board (delPos D pos)   then 
+               False
+           else if  con == Just R then
+                (if isBlocked board (delPos D (delPos R pos)) then 
+                     False
+                 else True)
+           else if con == Just L then
+                (if isBlocked board (delPos D (delPos L pos)) then 
+                     False
+                 else True)             
+           else
+               True
+    where mpiece = getPos pos board
+
+
+advanceGame game = 
+  case gameState game of 
+    User curPiece -> 
+        if stuck then
+            do 
+              let stuckBoard = addPiece board curPiece
+              let (newBoard,_) = erasePieces stuckBoard
+              return $ Game {staticBoard =newBoard,
+                             gameState = Falling}
+        else 
+            return $ Game {staticBoard = board,
+                           gameState = User newPiece
+                           
+                          }
+        where (newPiece, stuck) = movePiece D board curPiece  
+
+    Falling -> do
+        let (newBoard, isDone) = normalizeBoardStep $ staticBoard game 
+        if isDone then do 
+            let (erasedBoard, isDone) = erasePieces newBoard
+            if isDone then do 
+                newPiece <- randPiece
+                return $ Game {staticBoard =  erasedBoard,
+                               gameState = User newPiece 
+                              }
+             else
+                return $ Game {staticBoard = erasedBoard,
+                               gameState = Falling
+                              }
+            
+         else
+            return $ Game {staticBoard = newBoard,
+                           gameState = Falling
+                          }
+                        
+
+  where               
+      board = staticBoard game 
+      
+      erasePieces board = 
+          (foldl erase board matches, null matches)
+              where matches = findMatches board
 -- uncontrolled falling mode 
 
 

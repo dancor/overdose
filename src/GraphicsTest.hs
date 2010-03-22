@@ -38,8 +38,13 @@ toColor Yellow = Draw.Color 0 1 0 1
 drawBoard game = (Draw.scale 0.1 0.1 `Draw.compose` Draw.translate (-4.0, -8.0) %%) $ mconcat $  do 
   (pos, squareData) <- getAllPos game 
   guard $ isJust squareData
+  
   let mycolor = toColor $ color $ fromJust squareData 
-  return (Draw.translate (fromIntegral $ xpos pos, fromIntegral $ ypos pos) %% Draw.tint mycolor square) 
+  let mysquare = Draw.tint mycolor square
+  let finalsquare = if isVirus $ fromJust squareData then
+                        ((Draw.scale  0.3 0.3) %% square) `mappend` mysquare
+                    else mysquare 
+  return $ Draw.translate (fromIntegral $ xpos pos, fromIntegral $ ypos pos) %% finalsquare
 
 
 main :: IO ()
