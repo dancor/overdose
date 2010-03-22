@@ -1,9 +1,9 @@
 name:           overdose
 version:        0.1
-license:        GPL
+license:        BSD3
 license-file:   LICENSE
 author:         dan corson <danl@alum.mit.edu>
-synopsis:       <syn>
+synopsis:       dr. mario clone
 build-type:     Simple
 build-depends:  base, haskell98
 
